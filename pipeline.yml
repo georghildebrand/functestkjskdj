@@ -17,6 +17,7 @@ steps:
   inputs:
     versionSpec: '3.6' # Change Python version if necessary
     architecture: 'x64'
+    addToPath: true
 - script: |
     # dotnet restore # COMMENT OUT IF NOT USING FUNCTION EXTENSIONS
     # dotnet build --output './bin/' # COMMENT OUT IF NOT USING FUNCTION EXTENSIONS
