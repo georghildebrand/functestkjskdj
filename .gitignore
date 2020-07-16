@@ -1,0 +1,3 @@
+worker_env
+local.settings.json
+*.pyc
