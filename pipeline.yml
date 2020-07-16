@@ -25,7 +25,7 @@ steps:
     #pip install -r requirements.txt
     #worker_venv/lib/python3.6/site-packages
     #pip install --target="$(workingDirectory)/.python_packages/lib/site-packages" -r requirements.txt
-    pip install --target="worker_venv/lib/python3.6/site-packages" -r requirements.txt
+    pip install --target $(System.DefaultWorkingDirectory)/my_repo/.python_packages/lib/site-packages -r requirements.txt
 
 - task: ArchiveFiles@2
   displayName: "Archive files"
