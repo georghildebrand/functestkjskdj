@@ -8,41 +8,71 @@ variables:
   azureSubscription: '$(SERVICE_CONNECTION_NAME)'
   storageName: '$(FUCTION_APP_STORAGE_ACCOUNT_NAME)'
   resourceGroupName: '$(FUNCTION_APP_RESOURCE_GROUP_NAME)'
+  vmImageName: ubuntu-18.04
 
-pool:
-  vmImage: ubuntu-18.04
-steps:
-- task: UsePythonVersion@0
-  displayName: "Setting python version to 3.6 as required by functions"
-  inputs:
-    versionSpec: '3.6' # Change Python version if necessary
-    architecture: 'x64'
-    addToPath: true
-- script: |
-    # dotnet restore # COMMENT OUT IF NOT USING FUNCTION EXTENSIONS
-    # dotnet build --output './bin/' # COMMENT OUT IF NOT USING FUNCTION EXTENSIONS
-    #source $(workingDirectory)/worker_venv/bin/activate
-    #pip install -r requirements.txt
-    #worker_venv/lib/python3.6/site-packages
-    #pip install --target="$(workingDirectory)/.python_packages/lib/site-packages" -r requirements.txt
-    pip install --target $(System.DefaultWorkingDirectory)/my_repo/.python_packages/lib/site-packages -r requirements.txt
+stages:
+- stage: Build
+  displayName: Build stage
 
-- task: ArchiveFiles@2
-  displayName: "Archive files"
-  inputs:
-    rootFolderOrFile: "$(System.DefaultWorkingDirectory)"
-    includeRootFolder: false
-    archiveFile: "$(System.DefaultWorkingDirectory)/build$(Build.BuildId).zip"
-- task: PublishBuildArtifacts@1
-  inputs:
-    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-    ArtifactName: 'drop'
-    publishLocation: 'Container'
-- task: AzureFunctionApp@1
-  displayName: "Azure functions app deploy"
-  inputs:
-    # todo: make service connection dynamic for alpha,beta,ga
-    azureSubscription: $(azureSubscription) # here the subscription or service connection name
-    appType: functionAppLinux
-    appName: $(functionAppName)
-    packageForLinux: '$(Build.ArtifactStagingDirectory)/*.zip'
+  jobs:
+  - job: Build
+    displayName: Build
+    pool:
+      vmImage: $(vmImageName)
+
+    steps:
+    - bash: |
+        if [ -f extensions.csproj ]
+        then
+            dotnet build extensions.csproj --runtime ubuntu.16.04-x64 --output ./bin
+        fi
+      workingDirectory: $(workingDirectory)
+      displayName: 'Build extensions'
+
+    - task: UsePythonVersion@0
+      displayName: 'Use Python 3.6'
+      inputs:
+        versionSpec: 3.6 # Functions V2 supports Python 3.6 as of today
+
+    - script: pip3.6 install --upgrade pip setuptools wheel
+      displayName: "Install package tooling"
+
+    - script: pip3.6 install -r requirements.txt
+      displayName: "Install requirements"
+
+    - task: ArchiveFiles@2
+      displayName: 'Archive files'
+      inputs:
+        rootFolderOrFile: '$(workingDirectory)'
+        includeRootFolder: false
+        archiveType: zip
+        archiveFile: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+        replaceExistingArchive: true
+
+    - publish: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+      artifact: drop
+
+- stage: Deploy
+  displayName: Deploy stage
+  dependsOn: Build
+  condition: succeeded()
+
+  jobs:
+  - deployment: Deploy
+    displayName: Deploy
+    environment: 'development'
+    pool:
+      vmImage: $(vmImageName)
+
+    strategy:
+      runOnce:
+        deploy:
+
+          steps:
+          - task: AzureFunctionApp@1
+            displayName: 'Azure functions app deploy'
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              appType: functionAppLinux
+              appName: $(functionAppName)
+              package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
